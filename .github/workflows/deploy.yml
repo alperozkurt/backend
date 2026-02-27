@@ -19,8 +19,6 @@ jobs:
           script:
             cd /backend
             git pull origin main
-            source venv/bin/activate
-            pip install -r requirements.txt || true
             sudo systemctl restart fastapi-app
       
   
