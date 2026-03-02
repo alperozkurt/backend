@@ -13,7 +13,11 @@ app.include_router(users.router)
 # CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost",
+        "http://10.0.2.2",
+        "http://192.168.1.150",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

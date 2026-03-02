@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from ..database import SessionLocal
-from .. import models
+from .. import models, schemas
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -12,13 +12,16 @@ def get_db():
     finally:
         db.close()
 
-@router.post("/")
-def create_user(name: str, db: Session = Depends(get_db)):
-    user = models.User(name=name)
-    db.add(user)
+@router.post("/", response_model=schemas.UserResponse)
+def create_user(
+    user: schemas.UserCreate,
+    db: Session = Depends(get_db)
+):
+    db_user = models.User(name=user.name)
+    db.add(db_user)
     db.commit()
-    db.refresh(user)
-    return user
+    db.refresh(db_user)
+    return db_user
 
 @router.get("/")
 def list_users(db: Session = Depends(get_db)):
