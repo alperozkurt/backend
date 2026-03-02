@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from .database import engine
 from .models import Base
-from ..routers import users
+from .routers import users
 
 app = FastAPI()
 
