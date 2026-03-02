@@ -1,8 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from .database import engine
+from .models import Base
+from .routers import users
 
 app = FastAPI()
+
+Base.metadata.create_all(bind=engine)
+app.include_router(users.router)
 
 # CORS setup
 app.add_middleware(
