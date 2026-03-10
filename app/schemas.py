@@ -23,11 +23,6 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True  # for SQLAlchemy ORM (Pydantic v2)
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-    user: UserResponse
-
 class TransactionBase(BaseModel):
     amount: float
     description: str

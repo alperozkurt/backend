@@ -6,6 +6,7 @@ from .auth import hash_password
 
 router = APIRouter(prefix="/users", tags=["users"])
 
+
 def get_db():
     db = SessionLocal()
     try:
@@ -13,11 +14,9 @@ def get_db():
     finally:
         db.close()
 
+
 @router.post("/", response_model=schemas.UserResponse)
-def create_user(
-    user: schemas.UserCreate,
-    db: Session = Depends(get_db)
-):
+def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     existing = db.query(models.User).filter(models.User.email == user.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -30,6 +29,7 @@ def create_user(
     db.commit()
     db.refresh(db_user)
     return db_user
+
 
 @router.get("/")
 def list_users(db: Session = Depends(get_db)):
