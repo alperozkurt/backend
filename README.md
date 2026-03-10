@@ -10,30 +10,13 @@ FastAPI backend for the GençCüzdan financial management application.
 - User profile management
 - RESTful API with automatic OpenAPI documentation
 
-## Setup
-
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-2. Seed the database with initial data:
-```bash
-python seed.py
-```
-
-3. Run the development server:
-```bash
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
 ## API Documentation
 
-Once the server is running, visit `http://localhost:8000/docs` for interactive API documentation.
+Once the server is running, visit `http://100.68.176.40:8000/docs` for interactive API documentation.
 
 ## Database
 
-The application uses SQLAlchemy ORM with SQLite for development. Set the `DATABASE_URL` environment variable for production databases.
+Set the `DATABASE_URL` environment variable for production databases.
 
 ---
 
