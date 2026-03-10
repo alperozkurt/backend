@@ -33,16 +33,35 @@ def reset():
         # Seed financial summary bound to demo user
         summary = models.FinancialSummary(
             user_id=demo.id,
-            monthly_income=0.0,
-            monthly_expense=0.0,
-            monthly_savings=0.0,
+            monthly_income=1000.0,
+            monthly_expense=700.0,
+            monthly_savings=300.0,
         )
         db.add(summary)
+
+        # Seed transactions bound to demo user
+        transaction1 = models.Transaction(
+            user_id=demo.id,
+            amount=1000.0,
+            description="Maaş",
+            type="gelir",
+            date="2026-02-02"
+        )
+        db.add(transaction1)
+
+        transaction2 = models.Transaction(
+            user_id=demo.id,
+            amount=700.0,
+            description="Gider",
+            type="gider",
+            date="2026-03-03"
+        )
+        db.add(transaction2)
 
         # Seed default goal bound to demo user
         goal = models.Goal(
             user_id=demo.id,
-            name="🎯 Hedef",
+            name="Hedef",
             amount=10000.0,
             color="purple"
         )
