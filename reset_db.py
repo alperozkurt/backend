@@ -20,24 +20,36 @@ def reset():
 
     db = SessionLocal()
     try:
-        # Seed financial summary
-        summary = models.FinancialSummary(
-            monthly_income=0.0,
-            monthly_expense=0.0,
-            monthly_savings=0.0,
-        )
-        db.add(summary)
-
-        # Seed a demo user (can register via the app too)
+        # Seed a demo user first so we get its ID
         demo = models.User(
             email="demo@example.com",
             password=hash_password("demo123"),
             name="Demo User",
         )
         db.add(demo)
+        db.commit()
+        db.refresh(demo)
+
+        # Seed financial summary bound to demo user
+        summary = models.FinancialSummary(
+            user_id=demo.id,
+            monthly_income=0.0,
+            monthly_expense=0.0,
+            monthly_savings=0.0,
+        )
+        db.add(summary)
+
+        # Seed default goal bound to demo user
+        goal = models.Goal(
+            user_id=demo.id,
+            name="🎯 Hedef",
+            amount=10000.0,
+            color="purple"
+        )
+        db.add(goal)
 
         db.commit()
-        print("Done! Demo user: demo@example.com / demo123")
+        print(f"Done! Demo user: demo@example.com / demo123 (ID: {demo.id})")
     except Exception as e:
         db.rollback()
         print(f"Error: {e}")

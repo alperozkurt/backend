@@ -65,3 +65,18 @@ class UserProfileResponse(BaseModel):
 
 class UserProfileUpdate(BaseModel):
     name: str
+
+class GoalBase(BaseModel):
+    name: str
+    amount: float
+    color: str
+
+class GoalCreate(GoalBase):
+    pass
+
+class GoalResponse(GoalBase):
+    id: int
+    user_id: int
+
+    class Config:
+        from_attributes = True
