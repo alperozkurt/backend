@@ -45,7 +45,7 @@ def reset():
             amount=1000.0,
             description="Maaş",
             type="gelir",
-            date="2026-02-02"
+            date="2026-03-02"
         )
         db.add(transaction1)
 
@@ -61,8 +61,8 @@ def reset():
         # Seed default goal bound to demo user
         goal = models.Goal(
             user_id=demo.id,
-            name="Hedef",
-            amount=10000.0,
+            name="Tablet",
+            amount=1000.0,
             color="purple"
         )
         db.add(goal)

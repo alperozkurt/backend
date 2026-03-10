@@ -168,8 +168,8 @@ def get_goal(
     if not goal:
         goal = models.Goal(
             user_id=user_id,
-            name="🎯 Hedef",
-            amount=10000.0,
+            name="Tablet",
+            amount=1000.0,
             color="purple"
         )
         db.add(goal)
