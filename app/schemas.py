@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional
+from datetime import datetime
 
 class UserRegister(BaseModel):
     email: EmailStr
@@ -34,16 +35,19 @@ class TransactionCreate(TransactionBase):
 
 class TransactionResponse(TransactionBase):
     id: int
+    timestamp: Optional[datetime] = None
 
     class Config:
         from_attributes = True
 
 class FinancialSummaryResponse(BaseModel):
+    month: str
     monthly_income: float
     monthly_expense: float
     monthly_savings: float
 
 class FinancialSummaryUpdate(BaseModel):
+    month: Optional[str] = None
     monthly_income: Optional[float] = None
     monthly_expense: Optional[float] = None
     monthly_savings: Optional[float] = None

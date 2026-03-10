@@ -33,6 +33,7 @@ def reset():
         # Seed financial summary bound to demo user
         summary = models.FinancialSummary(
             user_id=demo.id,
+            month="Mart",
             monthly_income=1000.0,
             monthly_expense=700.0,
             monthly_savings=300.0,

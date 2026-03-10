@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
+from datetime import datetime
 from ..database import SessionLocal
 from .. import models, schemas
-from typing import List
+from typing import List, Optional
 
 router = APIRouter(prefix="/api", tags=["financial"])
 
@@ -23,14 +24,24 @@ def get_current_user_id(x_user_id: int = Header(None)):
 # Financial Summary Endpoints
 @router.get("/financial/summary", response_model=schemas.FinancialSummaryResponse)
 def get_financial_summary(
+    month: Optional[str] = None,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id)
 ):
-    summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
+    if not month:
+        months_tr = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+        month = months_tr[datetime.now().month - 1]
+
+    summary = db.query(models.FinancialSummary).filter(
+        models.FinancialSummary.user_id == user_id,
+        models.FinancialSummary.month == month
+    ).first()
+    
     if not summary:
-        # Create default summary if none exists for this user
+        # Create default summary if none exists for this user and month
         summary = models.FinancialSummary(
             user_id=user_id,
+            month=month,
             monthly_income=0.0,
             monthly_expense=0.0,
             monthly_savings=0.0
@@ -40,18 +51,31 @@ def get_financial_summary(
         db.refresh(summary)
     return summary
 
+
 @router.put("/financial/summary", response_model=schemas.FinancialSummaryResponse)
 def update_financial_summary(
     summary_update: schemas.FinancialSummaryUpdate,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id)
 ):
-    summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
+    month = summary_update.month
+    if not month:
+        months_tr = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+        month = months_tr[datetime.now().month - 1]
+
+    summary = db.query(models.FinancialSummary).filter(
+        models.FinancialSummary.user_id == user_id,
+        models.FinancialSummary.month == month
+    ).first()
+    
     if not summary:
-        summary = models.FinancialSummary(user_id=user_id)
+        summary = models.FinancialSummary(user_id=user_id, month=month)
         db.add(summary)
 
     update_data = summary_update.dict(exclude_unset=True)
+    if 'month' in update_data:
+        del update_data['month'] # Prevent overriding the month field incorrectly
+        
     for field, value in update_data.items():
         setattr(summary, field, value)
 
