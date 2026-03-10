@@ -53,11 +53,20 @@ def reset():
         transaction2 = models.Transaction(
             user_id=demo.id,
             amount=700.0,
-            description="Gider",
+            description="Fatura",
             type="gider",
             date="2026-03-03"
         )
         db.add(transaction2)
+
+        transaction3 = models.Transaction(
+            user_id=demo.id,
+            amount=100.0,
+            description="Ödeme",
+            type="gider",
+            date="2026-02-04"
+        )
+        db.add(transaction3)
 
         # Seed default goal bound to demo user
         goal = models.Goal(
