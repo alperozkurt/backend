@@ -1,15 +1,32 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 
-class UserCreate(BaseModel):
+class UserRegister(BaseModel):
+    email: EmailStr
+    password: str
     name: str
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    name: Optional[str] = None
 
 class UserResponse(BaseModel):
     id: int
-    name: str
+    email: str
+    name: Optional[str]
 
     class Config:
         from_attributes = True  # for SQLAlchemy ORM (Pydantic v2)
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    user: UserResponse
 
 class TransactionBase(BaseModel):
     amount: float

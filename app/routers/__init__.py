@@ -1,1 +1,1 @@
-from . import users, financial
+from . import users, financial, auth

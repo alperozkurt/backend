@@ -3,22 +3,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from .database import engine
 from .models import Base
-from .routers import users, financial
+from .routers import users, financial, auth
 
 app = FastAPI(title="GençCüzdan API", version="1.0.0")
 
 Base.metadata.create_all(bind=engine)
+app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(financial.router)
 
 # CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost",
-        "http://10.0.2.2",
-        "http://192.168.1.150",
-    ],
+    allow_origins=["*"],  # Allow all origins for testing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
