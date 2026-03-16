@@ -1,4 +1,4 @@
-r-- Add is_completed to goals table
+-- Add is_completed to goals table
 ALTER TABLE goals ADD COLUMN is_completed INTEGER DEFAULT 0;
 
 -- Drop unique constraint on user_id in goals table map to allow multiple goals
@@ -6,5 +6,4 @@ ALTER TABLE goals ADD COLUMN is_completed INTEGER DEFAULT 0;
 ALTER TABLE goals DROP CONSTRAINT IF EXISTS goals_user_id_key;
 
 -- Add goal_id to transactions table
-ALTER TABLE transactions ADD COLUMN goal_id INTEGER;
-ALTER TABLE transactions Add CONSTRAINT fk_goal FOREIGN KEY (goal_id) REFERENCES goals (id) ON DELETE SET NULL;
+ALTER TABLE transactions ADD COLUMN goal_id INTEGER REFERENCES goals (id) ON DELETE SET NULL;

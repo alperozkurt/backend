@@ -294,6 +294,19 @@ def purchase_goal(
     
     db.commit()
     return {"message": "Goal securely purchased", "goal": {"id": goal.id, "is_completed": goal.is_completed}}
+@router.delete("/goals/{goal_id}")
+def delete_goal(
+    goal_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    goal = db.query(models.Goal).filter(models.Goal.id == goal_id, models.Goal.user_id == user_id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+        
+    db.delete(goal)
+    db.commit()
+    return {"message": "Goal deleted successfully"}
 
 
 
