@@ -66,9 +66,13 @@ class InvestmentProfileResponse(InvestmentProfileBase):
 
 class UserProfileResponse(BaseModel):
     name: str
+    job_type: Optional[str] = None
+    monthly_salary: Optional[float] = None
 
 class UserProfileUpdate(BaseModel):
     name: str
+    job_type: Optional[str] = None
+    monthly_salary: Optional[float] = None
 
 class GoalBase(BaseModel):
     name: str

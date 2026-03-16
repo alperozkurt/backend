@@ -88,16 +88,26 @@ def update_financial_summary(
 @router.get("/transactions")
 def get_transactions(
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id)
+    user_id: int = Depends(get_current_user_id),
+    year: Optional[int] = None,
+    month: Optional[int] = None
 ):
-    income = db.query(models.Transaction).filter(
+    query_income = db.query(models.Transaction).filter(
         models.Transaction.user_id == user_id,
         models.Transaction.type == "gelir"
-    ).all()
-    expenses = db.query(models.Transaction).filter(
+    )
+    query_expenses = db.query(models.Transaction).filter(
         models.Transaction.user_id == user_id,
         models.Transaction.type == "gider"
-    ).all()
+    )
+
+    if year and month:
+        date_prefix = f"{year}-{month:02d}"
+        query_income = query_income.filter(models.Transaction.date.startswith(date_prefix))
+        query_expenses = query_expenses.filter(models.Transaction.date.startswith(date_prefix))
+        
+    income = query_income.all()
+    expenses = query_expenses.all()
 
     # Activities list combines income and expenses
     activities = []
@@ -230,7 +240,7 @@ def get_user_profile(
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"name": user.name or ""}
+    return {"name": user.name or "", "job_type": user.job_type, "monthly_salary": user.monthly_salary}
 
 @router.put("/user/profile", response_model=schemas.UserProfileResponse)
 def update_user_profile(
@@ -242,7 +252,10 @@ def update_user_profile(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    user.name = profile.name
+    update_data = profile.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(user, field, value)
+        
     db.commit()
     db.refresh(user)
-    return {"name": user.name}
+    return {"name": user.name or "", "job_type": user.job_type, "monthly_salary": user.monthly_salary}

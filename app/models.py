@@ -9,6 +9,8 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     password = Column(String, nullable=False)
     name = Column(String, nullable=True)
+    job_type = Column(String, nullable=True)
+    monthly_salary = Column(Float, nullable=True)
 
 class Transaction(Base):
     __tablename__ = "transactions"
