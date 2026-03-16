@@ -224,7 +224,7 @@ def create_goal(
 ):
     new_goal = models.Goal(
         user_id=user_id,
-        name=goal_create.name,
+        name=goal_create.name.strip(),
         amount=goal_create.amount,
         color=goal_create.color,
         is_completed=goal_create.is_completed
@@ -246,11 +246,10 @@ def update_goal(
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")
 
-    goal.name = goal_update.name
+    goal.name = goal_update.name.strip()
     goal.amount = goal_update.amount
     goal.color = goal_update.color
-    if hasattr(goal_update, 'is_completed'):
-        goal.is_completed = goal_update.is_completed
+    goal.is_completed = goal_update.is_completed
 
     db.commit()
     db.refresh(goal)
