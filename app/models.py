@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean
 from datetime import datetime
 from .database import Base
 
@@ -49,4 +49,5 @@ class Goal(Base):
     name = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     color = Column(String, nullable=False)  # e.g., 'purple', 'blue'
-    is_completed = Column(Integer, default=0) # SQLite fallback compatible via 0/1 parsing for boolean in SQLAlchemy, but we can also use Boolean.
+    is_completed = Column(Boolean, default=False)
+ # SQLite fallback compatible via 0/1 parsing for boolean in SQLAlchemy, but we can also use Boolean.
