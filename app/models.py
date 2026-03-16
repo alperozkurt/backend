@@ -17,6 +17,7 @@ class Transaction(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    goal_id = Column(Integer, ForeignKey("goals.id"), nullable=True, index=True)
     amount = Column(Float, nullable=False)
     description = Column(String, nullable=False)
     type = Column(String, nullable=False)  # 'gelir' or 'gider'
@@ -44,7 +45,8 @@ class Goal(Base):
     __tablename__ = "goals"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     color = Column(String, nullable=False)  # e.g., 'purple', 'blue'
+    is_completed = Column(Integer, default=0) # SQLite fallback compatible via 0/1 parsing for boolean in SQLAlchemy, but we can also use Boolean.

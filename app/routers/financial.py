@@ -116,15 +116,16 @@ def get_transactions(
             "date": transaction.date,
             "type": transaction.type,
             "amount": transaction.amount,
-            "description": transaction.description
+            "description": transaction.description,
+            "goal_id": transaction.goal_id
         })
 
     # Sort activities by date descending (simple string sort works for YYYY-MM-DD)
     activities.sort(key=lambda x: x["date"], reverse=True)
 
     return {
-        "income": [{"amount": t.amount, "description": t.description, "date": t.date} for t in income],
-        "expenses": [{"amount": t.amount, "description": t.description, "date": t.date} for t in expenses],
+        "income": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id} for t in income],
+        "expenses": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id} for t in expenses],
         "activities": activities
     }
 
@@ -142,7 +143,8 @@ def add_transaction(
         amount=transaction.amount,
         description=transaction.description,
         type=transaction.type,
-        date=transaction.date
+        date=transaction.date,
+        goal_id=transaction.goal_id
     )
     db.add(db_transaction)
 
@@ -160,7 +162,7 @@ def add_transaction(
     summary.monthly_savings = summary.monthly_income - summary.monthly_expense
 
     db.commit()
-    return {"message": "Transaction added successfully"}
+    return {"message": "Transaction added successfully", "id": db_transaction.id}
 
 
 # Investment Profile Endpoints
@@ -193,42 +195,106 @@ def save_investment_profile(
 
 
 # Goal Endpoints
-@router.get("/goals", response_model=schemas.GoalResponse)
-def get_goal(
+@router.get("/goals", response_model=List[schemas.GoalResponse])
+def get_goals(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id)
 ):
-    goal = db.query(models.Goal).filter(models.Goal.user_id == user_id).first()
-    if not goal:
-        goal = models.Goal(
+    goals = db.query(models.Goal).filter(models.Goal.user_id == user_id).all()
+    # Ensure there is at least one default if brand new
+    if not goals:
+        default_goal = models.Goal(
             user_id=user_id,
             name="Tablet",
             amount=1000.0,
-            color="purple"
+            color="purple",
+            is_completed=False
         )
-        db.add(goal)
+        db.add(default_goal)
         db.commit()
-        db.refresh(goal)
-    return goal
+        db.refresh(default_goal)
+        return [default_goal]
+    return goals
 
-@router.put("/goals", response_model=schemas.GoalResponse)
+@router.post("/goals", response_model=schemas.GoalResponse)
+def create_goal(
+    goal_create: schemas.GoalCreate,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    new_goal = models.Goal(
+        user_id=user_id,
+        name=goal_create.name,
+        amount=goal_create.amount,
+        color=goal_create.color,
+        is_completed=goal_create.is_completed
+    )
+    db.add(new_goal)
+    db.commit()
+    db.refresh(new_goal)
+    return new_goal
+
+
+@router.put("/goals/{goal_id}", response_model=schemas.GoalResponse)
 def update_goal(
+    goal_id: int,
     goal_update: schemas.GoalCreate,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id)
 ):
-    goal = db.query(models.Goal).filter(models.Goal.user_id == user_id).first()
+    goal = db.query(models.Goal).filter(models.Goal.id == goal_id, models.Goal.user_id == user_id).first()
     if not goal:
-        goal = models.Goal(user_id=user_id, name=goal_update.name, amount=goal_update.amount, color=goal_update.color)
-        db.add(goal)
-    else:
-        goal.name = goal_update.name
-        goal.amount = goal_update.amount
-        goal.color = goal_update.color
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    goal.name = goal_update.name
+    goal.amount = goal_update.amount
+    goal.color = goal_update.color
+    if hasattr(goal_update, 'is_completed'):
+        goal.is_completed = goal_update.is_completed
 
     db.commit()
     db.refresh(goal)
     return goal
+
+@router.post("/goals/{goal_id}/purchase")
+def purchase_goal(
+    goal_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    goal = db.query(models.Goal).filter(models.Goal.id == goal_id, models.Goal.user_id == user_id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+        
+    if goal.is_completed:
+        raise HTTPException(status_code=400, detail="Goal is already completed")
+
+    # 1. Mark goal as completed
+    goal.is_completed = True
+    
+    # 2. Add an explicit expense transaction for purchasing the target
+    expense_txn = models.Transaction(
+        user_id=user_id,
+        amount=goal.amount,
+        description=f"Satın Alma: {goal.name}",
+        type="gider",
+        date=datetime.now().strftime("%Y-%m-%d"),
+        goal_id=goal.id
+    )
+    db.add(expense_txn)
+    
+    # 3. Apply deduction to financial summary
+    summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
+    if not summary:
+        summary = models.FinancialSummary(user_id=user_id)
+        db.add(summary)
+        
+    summary.monthly_expense += goal.amount
+    summary.monthly_savings = summary.monthly_income - summary.monthly_expense
+    
+    db.commit()
+    return {"message": "Goal securely purchased", "goal": {"id": goal.id, "is_completed": goal.is_completed}}
+
 
 
 # User Profile Endpoints

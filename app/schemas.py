@@ -29,6 +29,7 @@ class TransactionBase(BaseModel):
     description: str
     type: str  # 'gelir' or 'gider'
     date: str
+    goal_id: Optional[int] = None
 
 class TransactionCreate(TransactionBase):
     pass
@@ -78,6 +79,7 @@ class GoalBase(BaseModel):
     name: str
     amount: float
     color: str
+    is_completed: bool = False
 
 class GoalCreate(GoalBase):
     pass
