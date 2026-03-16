@@ -201,19 +201,6 @@ def get_goals(
     user_id: int = Depends(get_current_user_id)
 ):
     goals = db.query(models.Goal).filter(models.Goal.user_id == user_id).all()
-    # Ensure there is at least one default if brand new
-    if not goals:
-        default_goal = models.Goal(
-            user_id=user_id,
-            name="Tablet",
-            amount=1000.0,
-            color="purple",
-            is_completed=False
-        )
-        db.add(default_goal)
-        db.commit()
-        db.refresh(default_goal)
-        return [default_goal]
     return goals
 
 @router.post("/goals", response_model=schemas.GoalResponse)

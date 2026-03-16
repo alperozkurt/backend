@@ -28,10 +28,3 @@ class Message(BaseModel):
 async def root():
     return {"message": "GençCüzdan API", "version": "1.0.0"}
 
-@app.get("/ping")
-async def ping():
-    return {"status": "ok"}
-
-@app.post("/echo")
-async def echo(msg: Message):
-    return {"you_sent": msg.text}
