@@ -30,6 +30,8 @@ class TransactionBase(BaseModel):
     type: str  # 'gelir' or 'gider'
     date: str
     goal_id: Optional[int] = None
+    category: str = "Genel"
+    is_recurring: bool = False
 
 class TransactionCreate(TransactionBase):
     pass
@@ -76,8 +78,9 @@ class UserProfileUpdate(BaseModel):
     monthly_salary: Optional[float] = None
 
 class GoalBase(BaseModel):
-    name: str
-    amount: float
+    title: str
+    target_amount: float
+    category: str = "Genel"
     color: str
     is_completed: bool = False
 

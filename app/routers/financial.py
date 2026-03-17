@@ -117,6 +117,8 @@ def get_transactions(
             "type": transaction.type,
             "amount": transaction.amount,
             "description": transaction.description,
+            "category": transaction.category,
+            "is_recurring": transaction.is_recurring,
             "goal_id": transaction.goal_id
         })
 
@@ -124,8 +126,8 @@ def get_transactions(
     activities.sort(key=lambda x: x["date"], reverse=True)
 
     return {
-        "income": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id} for t in income],
-        "expenses": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id} for t in expenses],
+        "income": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id, "category": t.category, "is_recurring": t.is_recurring} for t in income],
+        "expenses": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id, "category": t.category, "is_recurring": t.is_recurring} for t in expenses],
         "activities": activities
     }
 
@@ -144,6 +146,8 @@ def add_transaction(
         description=transaction.description,
         type=transaction.type,
         date=transaction.date,
+        category=transaction.category,
+        is_recurring=transaction.is_recurring,
         goal_id=transaction.goal_id
     )
     db.add(db_transaction)
@@ -211,8 +215,9 @@ def create_goal(
 ):
     new_goal = models.Goal(
         user_id=user_id,
-        name=goal_create.name.strip(),
-        amount=goal_create.amount,
+        title=goal_create.title.strip(),
+        target_amount=goal_create.target_amount,
+        category=goal_create.category,
         color=goal_create.color,
         is_completed=goal_create.is_completed
     )
@@ -233,8 +238,9 @@ def update_goal(
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")
 
-    goal.name = goal_update.name.strip()
-    goal.amount = goal_update.amount
+    goal.title = goal_update.title.strip()
+    goal.target_amount = goal_update.target_amount
+    goal.category = goal_update.category
     goal.color = goal_update.color
     goal.is_completed = goal_update.is_completed
 
@@ -261,9 +267,10 @@ def purchase_goal(
     # 2. Add an explicit expense transaction for purchasing the target
     expense_txn = models.Transaction(
         user_id=user_id,
-        amount=goal.amount,
-        description=f"Satın Alma: {goal.name}",
+        amount=goal.target_amount,
+        description=f"Satın Alma: {goal.title}",
         type="gider",
+        category="Hedef",
         date=datetime.now().strftime("%Y-%m-%d"),
         goal_id=goal.id
     )
@@ -275,7 +282,7 @@ def purchase_goal(
         summary = models.FinancialSummary(user_id=user_id)
         db.add(summary)
         
-    summary.monthly_expense += goal.amount
+    summary.monthly_expense += goal.target_amount
     summary.monthly_savings = summary.monthly_income - summary.monthly_expense
     
     db.commit()

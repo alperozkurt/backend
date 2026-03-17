@@ -22,6 +22,8 @@ class Transaction(Base):
     description = Column(String, nullable=False)
     type = Column(String, nullable=False)  # 'gelir' or 'gider'
     date = Column(String, nullable=False)
+    category = Column(String, nullable=False, default="Genel")
+    is_recurring = Column(Boolean, default=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 class FinancialSummary(Base):
@@ -46,8 +48,8 @@ class Goal(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    name = Column(String, nullable=False)
-    amount = Column(Float, nullable=False)
+    title = Column(String, nullable=False)
+    target_amount = Column(Float, nullable=False)
     color = Column(String, nullable=False)  # e.g., 'purple', 'blue'
+    category = Column(String, nullable=False, default="Genel")
     is_completed = Column(Boolean, default=False)
- # SQLite fallback compatible via 0/1 parsing for boolean in SQLAlchemy, but we can also use Boolean.
