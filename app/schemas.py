@@ -94,3 +94,20 @@ class GoalResponse(GoalBase):
 
     class Config:
         from_attributes = True
+
+class SavingBase(BaseModel):
+    amount: float
+    currency: str  # 'TRY', 'USD', 'EUR', 'GOLD'
+    description: Optional[str] = None
+    date: str
+
+class SavingCreate(SavingBase):
+    pass
+
+class SavingResponse(SavingBase):
+    id: int
+    user_id: int
+    timestamp: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

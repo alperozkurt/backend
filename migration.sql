@@ -1,6 +1,12 @@
--- Migration script to refactor savings into transactions table
--- Add currency column to transactions
-ALTER TABLE transactions ADD COLUMN currency VARCHAR(10) DEFAULT 'TRY';
+-- Migration script to recreate savings table
+CREATE TABLE IF NOT EXISTS savings (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount FLOAT NOT NULL,
+    currency VARCHAR(10) NOT NULL,
+    description TEXT,
+    date VARCHAR(20) NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
--- Drop savings table if it exists (from previous implementation attempt)
-DROP TABLE IF EXISTS savings;
+CREATE INDEX IF NOT EXISTS idx_savings_user_id ON savings(user_id);

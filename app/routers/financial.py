@@ -21,6 +21,23 @@ def get_current_user_id(x_user_id: int = Header(None)):
     return x_user_id
 
 
+# Currency Rates Caching (Simple implementation)
+CURRENCY_RATES = {
+    "rates": {"USD": 32.5, "EUR": 35.2, "GOLD": 2450.0, "TRY": 1.0},
+    "last_updated": None
+}
+
+def get_exchange_rates():
+    # In a real app, this would call an external API
+    # For now, we use hardcoded rates as requested "does not need to be super accurate 24/7"
+    return CURRENCY_RATES["rates"]
+
+def convert_to_try(amount: float, currency: str) -> float:
+    rates = get_exchange_rates()
+    rate = rates.get(currency.upper(), 1.0)
+    return amount * rate
+
+
 # Financial Summary Endpoints
 @router.get("/financial/summary", response_model=schemas.FinancialSummaryResponse)
 def get_financial_summary(
@@ -160,12 +177,13 @@ def add_transaction(
         summary = models.FinancialSummary(user_id=user_id)
         db.add(summary)
 
-    # Note: Summary logic might need refinement for multi-currency, 
-    # but for now we keep it simple as it only tracks the numeric amount.
+    # Note: Summary logic now accounts for currency conversion to TRY
+    amount_in_try = convert_to_try(transaction.amount, transaction.currency)
+    
     if transaction.type == "gelir":
-        summary.monthly_income += transaction.amount
+        summary.monthly_income += amount_in_try
     elif transaction.type == "gider":
-        summary.monthly_expense += transaction.amount
+        summary.monthly_expense += amount_in_try
 
     summary.monthly_savings = summary.monthly_income - summary.monthly_expense
 
@@ -319,6 +337,48 @@ def get_user_profile(
     db.commit()
     db.refresh(user)
     return {"name": user.name or "", "job_type": user.job_type, "monthly_salary": user.monthly_salary}
+
+
+# Savings Endpoints
+@router.get("/savings", response_model=List[schemas.SavingResponse])
+def get_savings(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    savings = db.query(models.Saving).filter(models.Saving.user_id == user_id).all()
+    return savings
+
+@router.post("/savings", response_model=schemas.SavingResponse)
+def add_saving(
+    saving: schemas.SavingCreate,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    db_saving = models.Saving(
+        user_id=user_id,
+        amount=saving.amount,
+        currency=saving.currency,
+        description=saving.description,
+        date=saving.date
+    )
+    db.add(db_saving)
+    db.commit()
+    db.refresh(db_saving)
+    return db_saving
+
+@router.delete("/savings/{saving_id}")
+def delete_saving(
+    saving_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    saving = db.query(models.Saving).filter(models.Saving.id == saving_id, models.Saving.user_id == user_id).first()
+    if not saving:
+        raise HTTPException(status_code=404, detail="Saving not found")
+    
+    db.delete(saving)
+    db.commit()
+    return {"message": "Saving deleted successfully"}
 
 
 @router.put("/user/profile", response_model=schemas.UserProfileResponse)

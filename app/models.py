@@ -54,3 +54,14 @@ class Goal(Base):
     color = Column(String, nullable=False)  # e.g., 'purple', 'blue'
     category = Column(String, nullable=False, default="Genel")
     is_completed = Column(Boolean, default=False)
+
+class Saving(Base):
+    __tablename__ = "savings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, nullable=False)  # 'TRY', 'USD', 'EUR', 'GOLD'
+    description = Column(String, nullable=True)
+    date = Column(String, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
