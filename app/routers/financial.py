@@ -26,7 +26,7 @@ import json
 import time
 
 # Currency Rates Caching
-CURRENCY_RATES_DATA = {"USD": 34.52, "EUR": 37.89, "GOLD": 2450.0, "BTC": 3000000.0, "TRY": 1.0}
+CURRENCY_RATES_DATA = {"USD/TL": 34.52, "EUR/TL": 37.89, "Gram Altın": 2450.0, "BTC/TL": 3000000.0, "TRY": 1.0}
 LAST_UPDATED_TIME = 0.0
 
 def fetch_live_rates():
