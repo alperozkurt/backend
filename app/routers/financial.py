@@ -119,15 +119,16 @@ def get_transactions(
             "description": transaction.description,
             "category": transaction.category,
             "is_recurring": transaction.is_recurring,
-            "goal_id": transaction.goal_id
+            "goal_id": transaction.goal_id,
+            "currency": transaction.currency
         })
 
     # Sort activities by date descending (simple string sort works for YYYY-MM-DD)
     activities.sort(key=lambda x: x["date"], reverse=True)
 
     return {
-        "income": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id, "category": t.category, "is_recurring": t.is_recurring} for t in income],
-        "expenses": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id, "category": t.category, "is_recurring": t.is_recurring} for t in expenses],
+        "income": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id, "category": t.category, "is_recurring": t.is_recurring, "currency": t.currency} for t in income],
+        "expenses": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id, "category": t.category, "is_recurring": t.is_recurring, "currency": t.currency} for t in expenses],
         "activities": activities
     }
 
@@ -148,16 +149,19 @@ def add_transaction(
         date=transaction.date,
         category=transaction.category,
         is_recurring=transaction.is_recurring,
-        goal_id=transaction.goal_id
+        goal_id=transaction.goal_id,
+        currency=transaction.currency
     )
     db.add(db_transaction)
 
-    # Update financial summary
+    # Update financial summary (only for TRY for now, or total balance? The summary seems to be in TRY)
     summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
     if not summary:
         summary = models.FinancialSummary(user_id=user_id)
         db.add(summary)
 
+    # Note: Summary logic might need refinement for multi-currency, 
+    # but for now we keep it simple as it only tracks the numeric amount.
     if transaction.type == "gelir":
         summary.monthly_income += transaction.amount
     elif transaction.type == "gider":
@@ -312,7 +316,10 @@ def get_user_profile(
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    db.commit()
+    db.refresh(user)
     return {"name": user.name or "", "job_type": user.job_type, "monthly_salary": user.monthly_salary}
+
 
 @router.put("/user/profile", response_model=schemas.UserProfileResponse)
 def update_user_profile(

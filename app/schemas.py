@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 class UserRegister(BaseModel):
@@ -32,6 +32,7 @@ class TransactionBase(BaseModel):
     goal_id: Optional[int] = None
     category: str = "Genel"
     is_recurring: bool = False
+    currency: str = "TRY"
 
 class TransactionCreate(TransactionBase):
     pass
