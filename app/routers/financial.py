@@ -21,21 +21,71 @@ def get_current_user_id(x_user_id: int = Header(None)):
     return x_user_id
 
 
-# Currency Rates Caching (Simple implementation)
-CURRENCY_RATES = {
-    "rates": {"USD": 32.5, "EUR": 35.2, "GOLD": 2450.0, "TRY": 1.0},
-    "last_updated": None
-}
+import urllib.request
+import json
+import time
+
+# Currency Rates Caching
+CURRENCY_RATES_DATA = {"USD": 34.52, "EUR": 37.89, "GOLD": 2450.0, "BTC": 3000000.0, "TRY": 1.0}
+LAST_UPDATED_TIME = 0.0
+
+def fetch_live_rates():
+    global LAST_UPDATED_TIME, CURRENCY_RATES_DATA
+    # Update cache if older than 1 hour
+    current_time = time.time()
+    if current_time - LAST_UPDATED_TIME < 3600:
+        return CURRENCY_RATES_DATA
+    
+    try:
+        # Use a free exchange rate API (similar to frontend)
+        req = urllib.request.Request("https://open.er-api.com/v6/latest/USD", headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            if data.get("result") == "success":
+                rates = data.get("rates", {})
+                usd_try = float(rates.get("TRY", 34.52))
+                eur_usd = float(rates.get("EUR", 0.92)) or 1.0 # 1 USD = X EUR
+                
+                new_rates = {
+                    "USD/TL": usd_try,
+                    "EUR/TL": usd_try / eur_usd if eur_usd else 37.89,
+                    "TRY": 1.0,
+                    "Gram Altın": (2700.0 / 31.1035) * usd_try, # Approximation
+                    "BTC/TL": 100000.0 * usd_try # Approximation
+                }
+                
+                CURRENCY_RATES_DATA.update(new_rates)
+                LAST_UPDATED_TIME = current_time
+                print("Backend currency rates updated successfully")
+    except Exception as e:
+        print(f"Error fetching live rates: {e}")
+    
+    return CURRENCY_RATES_DATA
 
 def get_exchange_rates():
-    # In a real app, this would call an external API
-    # For now, we use hardcoded rates as requested "does not need to be super accurate 24/7"
-    return CURRENCY_RATES["rates"]
+    return fetch_live_rates()
 
 def convert_to_try(amount: float, currency: str) -> float:
     rates = get_exchange_rates()
-    rate = rates.get(currency.upper(), 1.0)
+    # Handle mappings from frontend dropdown values to backend rate keys
+    curr = currency.upper()
+    mapping = {
+        'USD': 'USD/TL',
+        'EUR': 'EUR/TL',
+        'GOLD': 'Gram Altın',
+        'GRAM ALTIN': 'Gram Altın',
+        'BTC': 'BTC/TL',
+        'BTC/TL': 'BTC/TL',
+        'TRY': 'TRY'
+    }
+    key = mapping.get(curr, curr)
+    rate = rates.get(key, 1.0)
     return amount * rate
+
+
+@router.get("/market/rates")
+def get_market_rates():
+    return get_exchange_rates()
 
 
 # Financial Summary Endpoints
@@ -45,28 +95,41 @@ def get_financial_summary(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id)
 ):
-    if not month:
-        months_tr = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
-        month = months_tr[datetime.now().month - 1]
-
-    summary = db.query(models.FinancialSummary).filter(
-        models.FinancialSummary.user_id == user_id,
-        models.FinancialSummary.month == month
-    ).first()
+    months_tr = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+    current_month_index = datetime.now().month - 1
     
-    if not summary:
-        # Create default summary if none exists for this user and month
-        summary = models.FinancialSummary(
-            user_id=user_id,
-            month=month,
-            monthly_income=0.0,
-            monthly_expense=0.0,
-            monthly_savings=0.0
-        )
-        db.add(summary)
-        db.commit()
-        db.refresh(summary)
-    return summary
+    if not month:
+        month = months_tr[current_month_index]
+    
+    # Calculate totals from transactions for THIS month
+    year = datetime.now().year
+    month_int = months_tr.index(month) + 1
+    date_prefix = f"{year}-{month_int:02d}"
+    
+    transactions = db.query(models.Transaction).filter(
+        models.Transaction.user_id == user_id,
+        models.Transaction.date.startswith(date_prefix)
+    ).all()
+    
+    total_income = 0.0
+    total_expense = 0.0
+    
+    for t in transactions:
+        amount_try = convert_to_try(t.amount, t.currency)
+        if t.type == "gelir":
+            total_income += amount_try
+        elif t.type == "gider":
+            total_expense += amount_try
+            
+    # Calculate savings (derived value for the month)
+    monthly_savings = total_income - total_expense
+    
+    return {
+        "month": month,
+        "monthly_income": total_income,
+        "monthly_expense": total_expense,
+        "monthly_savings": monthly_savings
+    }
 
 
 @router.put("/financial/summary", response_model=schemas.FinancialSummaryResponse)
@@ -75,30 +138,9 @@ def update_financial_summary(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id)
 ):
-    month = summary_update.month
-    if not month:
-        months_tr = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
-        month = months_tr[datetime.now().month - 1]
-
-    summary = db.query(models.FinancialSummary).filter(
-        models.FinancialSummary.user_id == user_id,
-        models.FinancialSummary.month == month
-    ).first()
-    
-    if not summary:
-        summary = models.FinancialSummary(user_id=user_id, month=month)
-        db.add(summary)
-
-    update_data = summary_update.dict(exclude_unset=True)
-    if 'month' in update_data:
-        del update_data['month'] # Prevent overriding the month field incorrectly
-        
-    for field, value in update_data.items():
-        setattr(summary, field, value)
-
-    db.commit()
-    db.refresh(summary)
-    return summary
+    # This endpoint is now less critical as GET calculates everything,
+    # but we'll return the same calculated data for compatibility.
+    return get_financial_summary(summary_update.month, db, user_id)
 
 
 # Transaction Endpoints
