@@ -362,15 +362,23 @@ def purchase_goal(
     )
     db.add(expense_txn)
     
-    # 3. Auto-create a saving entry for this completed goal
-    saving = models.Saving(
-        user_id=user_id,
-        amount=goal.target_amount,
-        currency="TRY",
-        description=f"Hedef: {goal.title}",
-        date=datetime.now().strftime("%Y-%m-%d")
-    )
-    db.add(saving)
+    # 3. Check if there's excess income over the goal target → save as TRY
+    total_goal_income = db.query(models.Transaction).filter(
+        models.Transaction.user_id == user_id,
+        models.Transaction.goal_id == goal.id,
+        models.Transaction.type == "gelir"
+    ).all()
+    total_saved = sum(convert_to_try(t.amount, t.currency) for t in total_goal_income)
+    excess = total_saved - goal.target_amount
+    if excess > 0:
+        saving = models.Saving(
+            user_id=user_id,
+            amount=round(excess, 2),
+            currency="TRY",
+            description=f"Fazla Birikim: {goal.title}",
+            date=datetime.now().strftime("%Y-%m-%d")
+        )
+        db.add(saving)
     
     # 4. Apply deduction to financial summary
     summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
