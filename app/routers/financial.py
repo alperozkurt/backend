@@ -26,41 +26,63 @@ import json
 import time
 
 # Currency Rates Caching
-CURRENCY_RATES_DATA = {"USD/TL": 34.52, "EUR/TL": 37.89, "Gram Altın": 2450.0, "BTC/TL": 3000000.0, "TRY": 1.0}
+CURRENCY_RATES_DATA = {"USD/TL": 44.36, "EUR/TL": 51.45, "Gram Altın": 6500.0, "BTC/TL": 3160000.0, "TRY": 1.0}
 LAST_UPDATED_TIME = 0.0
 
 def fetch_live_rates():
     global LAST_UPDATED_TIME, CURRENCY_RATES_DATA
-    # Update cache if older than 1 hour
     current_time = time.time()
-    if current_time - LAST_UPDATED_TIME < 3600:
+    if current_time - LAST_UPDATED_TIME < 1800:  # 30 min cache
         return CURRENCY_RATES_DATA
-    
+
+    usd_try = CURRENCY_RATES_DATA.get("USD/TL", 44.36)
+
+    # 1) USD/TRY and EUR/TRY
     try:
-        # Use a free exchange rate API (similar to frontend)
         req = urllib.request.Request("https://open.er-api.com/v6/latest/USD", headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=5) as response:
+        with urllib.request.urlopen(req, timeout=8) as response:
             data = json.loads(response.read().decode())
             if data.get("result") == "success":
                 rates = data.get("rates", {})
-                usd_try = float(rates.get("TRY", 34.52))
-                eur_usd = float(rates.get("EUR", 0.92)) or 1.0 # 1 USD = X EUR
-                
-                new_rates = {
-                    "USD/TL": usd_try,
-                    "EUR/TL": usd_try / eur_usd if eur_usd else 37.89,
-                    "TRY": 1.0,
-                    "Gram Altın": (2700.0 / 31.1035) * usd_try, # Approximation
-                    "BTC/TL": 100000.0 * usd_try # Approximation
-                }
-                
-                CURRENCY_RATES_DATA.update(new_rates)
-                LAST_UPDATED_TIME = current_time
-                print("Backend currency rates updated successfully")
+                usd_try = float(rates.get("TRY", 44.36))
+                eur_usd = float(rates.get("EUR", 0.86)) or 1.0
+                CURRENCY_RATES_DATA["USD/TL"] = usd_try
+                CURRENCY_RATES_DATA["EUR/TL"] = round(usd_try / eur_usd, 4) if eur_usd else 51.0
+                CURRENCY_RATES_DATA["TRY"] = 1.0
+                print(f"[rates] Exchange: USD/TL={usd_try}, EUR/TL={CURRENCY_RATES_DATA['EUR/TL']}")
     except Exception as e:
-        print(f"Error fetching live rates: {e}")
-    
+        print(f"[rates] Exchange API error: {e}")
+
+    # 2) BTC and Gold from CoinGecko
+    try:
+        cg_url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,pax-gold&vs_currencies=try,usd"
+        req2 = urllib.request.Request(cg_url, headers={
+            'User-Agent': 'Mozilla/5.0',
+            'Accept': 'application/json'
+        })
+        with urllib.request.urlopen(req2, timeout=10) as response:
+            raw = response.read().decode()
+            print(f"[rates] CoinGecko raw: {raw[:200]}")
+            cg_data = json.loads(raw)
+
+            btc_try = cg_data.get("bitcoin", {}).get("try")
+            if btc_try is not None:
+                CURRENCY_RATES_DATA["BTC/TL"] = float(btc_try)
+                print(f"[rates] BTC/TL={btc_try}")
+
+            xau_usd = cg_data.get("pax-gold", {}).get("usd")
+            if xau_usd is not None:
+                gram_try = round((float(xau_usd) / 31.1035) * usd_try, 2)
+                CURRENCY_RATES_DATA["Gram Altın"] = gram_try
+                print(f"[rates] Gram Altın={gram_try} (XAU/oz=${xau_usd})")
+    except Exception as e:
+        print(f"[rates] CoinGecko error: {e}")
+
+    LAST_UPDATED_TIME = current_time
+    print(f"[rates] Final: {CURRENCY_RATES_DATA}")
     return CURRENCY_RATES_DATA
+
+
 
 def get_exchange_rates():
     return fetch_live_rates()
@@ -340,7 +362,17 @@ def purchase_goal(
     )
     db.add(expense_txn)
     
-    # 3. Apply deduction to financial summary
+    # 3. Auto-create a saving entry for this completed goal
+    saving = models.Saving(
+        user_id=user_id,
+        amount=goal.target_amount,
+        currency="TRY",
+        description=f"Hedef: {goal.title}",
+        date=datetime.now().strftime("%Y-%m-%d")
+    )
+    db.add(saving)
+    
+    # 4. Apply deduction to financial summary
     summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
     if not summary:
         summary = models.FinancialSummary(user_id=user_id)
@@ -351,6 +383,50 @@ def purchase_goal(
     
     db.commit()
     return {"message": "Goal securely purchased", "goal": {"id": goal.id, "is_completed": goal.is_completed}}
+
+
+class GoalFundRequest(schemas.BaseModel):
+    saving_id: int
+
+@router.post("/goals/{goal_id}/fund")
+def fund_goal_from_saving(
+    goal_id: int,
+    req: GoalFundRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    goal = db.query(models.Goal).filter(models.Goal.id == goal_id, models.Goal.user_id == user_id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    if goal.is_completed:
+        raise HTTPException(status_code=400, detail="Goal is already completed")
+
+    saving = db.query(models.Saving).filter(models.Saving.id == req.saving_id, models.Saving.user_id == user_id).first()
+    if not saving:
+        raise HTTPException(status_code=404, detail="Saving not found")
+
+    # Convert saving to TRY
+    amount_try = convert_to_try(saving.amount, saving.currency)
+
+    # Create income transaction tagged to goal
+    txn = models.Transaction(
+        user_id=user_id,
+        amount=amount_try,
+        description=f"Varlıktan Hedefe: {saving.description or saving.currency} → {goal.title}",
+        type="gelir",
+        category="Hedef",
+        date=datetime.now().strftime("%Y-%m-%d"),
+        goal_id=goal.id,
+        currency="TRY"
+    )
+    db.add(txn)
+
+    # Delete the saving
+    db.delete(saving)
+    db.commit()
+
+    return {"message": f"Saving applied to goal '{goal.title}'", "amount_try": amount_try}
+
 @router.delete("/goals/{goal_id}")
 def delete_goal(
     goal_id: int,
