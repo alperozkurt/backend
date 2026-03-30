@@ -53,7 +53,9 @@ class Goal(Base):
     target_amount = Column(Float, nullable=False)
     color = Column(String, nullable=False)  # e.g., 'purple', 'blue'
     category = Column(String, nullable=False, default="Genel")
+    icon = Column(String, nullable=False, default="stars_rounded")
     is_completed = Column(Boolean, default=False)
+    completed_at = Column(String, nullable=True)
 
 class Saving(Base):
     __tablename__ = "savings"

@@ -313,7 +313,24 @@ def get_goals(
     user_id: int = Depends(get_current_user_id)
 ):
     goals = db.query(models.Goal).filter(models.Goal.user_id == user_id).all()
-    return goals
+    results = []
+    for g in goals:
+        txs = db.query(models.Transaction).filter(models.Transaction.goal_id == g.id).all()
+        saved = 0.0
+        for t in txs:
+            amount_try = convert_to_try(t.amount, t.currency)
+            if t.type == "gelir":
+                saved += amount_try
+            elif t.type == "gider":
+                saved -= amount_try
+        
+        g_dict = {c.name: getattr(g, c.name) for c in g.__table__.columns}
+        g_dict["saved_amount"] = max(0.0, saved)
+        g_dict["icon"] = getattr(g, "icon", "stars_rounded")
+        g_dict["completed_at"] = getattr(g, "completed_at", None)
+        
+        results.append(schemas.GoalResponse(**g_dict))
+    return results
 
 @router.post("/goals", response_model=schemas.GoalResponse)
 def create_goal(
@@ -327,7 +344,9 @@ def create_goal(
         target_amount=goal_create.target_amount,
         category=goal_create.category,
         color=goal_create.color,
-        is_completed=goal_create.is_completed
+        icon=goal_create.icon,
+        is_completed=goal_create.is_completed,
+        completed_at=goal_create.completed_at
     )
     db.add(new_goal)
     db.commit()
@@ -350,7 +369,9 @@ def update_goal(
     goal.target_amount = goal_update.target_amount
     goal.category = goal_update.category
     goal.color = goal_update.color
+    goal.icon = goal_update.icon
     goal.is_completed = goal_update.is_completed
+    goal.completed_at = goal_update.completed_at
 
     db.commit()
     db.refresh(goal)
@@ -371,6 +392,7 @@ def purchase_goal(
 
     # 1. Mark goal as completed
     goal.is_completed = True
+    goal.completed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     # 2. Add an explicit expense transaction for purchasing the target
     expense_txn = models.Transaction(
@@ -379,8 +401,8 @@ def purchase_goal(
         description=f"Satın Alma: {goal.title}",
         type="gider",
         category="Hedef",
-        date=datetime.now().strftime("%Y-%m-%d"),
-        goal_id=goal.id
+        date=datetime.now().strftime("%Y-%m-%d")
+        # goal_id is intentionally omitted so the goal's saved_amount and chart do not zero-out
     )
     db.add(expense_txn)
     
@@ -644,3 +666,44 @@ def apply_saved_expense(
 
     db.commit()
     return {"message": f"Expense '{expense.label}' applied", "amount": final_amount, "id": db_transaction.id}
+
+@router.get("/goals/{goal_id}/history")
+def get_goal_history(
+    goal_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    goal = db.query(models.Goal).filter(models.Goal.id == goal_id, models.Goal.user_id == user_id).first()
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+        
+    txs = db.query(models.Transaction).filter(models.Transaction.goal_id == goal.id).order_by(models.Transaction.date).all()
+    
+    net_per_month = {}
+    for t in txs:
+        try:
+            dt = datetime.strptime(t.date, "%Y-%m-%d")
+            month_key = f"{dt.year}-{dt.month:02d}"
+        except Exception:
+            continue
+        
+        amount_try = convert_to_try(t.amount, t.currency)
+        if t.type == "gider":
+            amount_try = -amount_try
+            
+        net_per_month[month_key] = net_per_month.get(month_key, 0.0) + amount_try
+    
+    sorted_months = sorted(net_per_month.keys())
+    months_tr = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+    
+    history_obj = {}
+    running_total = 0.0
+    for mk in sorted_months:
+        y, m = mk.split("-")
+        label = f"{months_tr[int(m)-1]} {y}"
+        running_total += net_per_month[mk]
+        if running_total < 0:
+            running_total = 0.0
+        history_obj[label] = running_total
+        
+    return history_obj

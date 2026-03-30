@@ -83,7 +83,9 @@ class GoalBase(BaseModel):
     target_amount: float
     category: str = "Genel"
     color: str
+    icon: str = "stars_rounded"
     is_completed: bool = False
+    completed_at: Optional[str] = None
 
 class GoalCreate(GoalBase):
     pass
@@ -91,6 +93,7 @@ class GoalCreate(GoalBase):
 class GoalResponse(GoalBase):
     id: int
     user_id: int
+    saved_amount: float = 0.0
 
     class Config:
         from_attributes = True
