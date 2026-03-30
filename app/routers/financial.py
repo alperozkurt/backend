@@ -26,7 +26,13 @@ import json
 import time
 
 # Currency Rates Caching
-CURRENCY_RATES_DATA = {"USD/TL": 44.36, "EUR/TL": 51.45, "Gram Altın": 6500.0, "BTC/TL": 3160000.0, "TRY": 1.0}
+CURRENCY_RATES_DATA = {
+    "USD/TL": 44.36, "EUR/TL": 51.45, "GBP/TL": 56.20, "JPY/TL": 0.296,
+    "CHF/TL": 50.10, "CNY/TL": 6.10,
+    "Gram Altın": 6500.0, "Gümüş": 55.0,
+    "BTC/TL": 3160000.0, "ETH/TL": 72000.0,
+    "TRY": 1.0
+}
 LAST_UPDATED_TIME = 0.0
 
 def fetch_live_rates():
@@ -37,7 +43,7 @@ def fetch_live_rates():
 
     usd_try = CURRENCY_RATES_DATA.get("USD/TL", 44.36)
 
-    # 1) USD/TRY and EUR/TRY
+    # 1) Fiat currencies from ExchangeRate API (returns 150+ currencies)
     try:
         req = urllib.request.Request("https://open.er-api.com/v6/latest/USD", headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=8) as response:
@@ -46,23 +52,32 @@ def fetch_live_rates():
                 rates = data.get("rates", {})
                 usd_try = float(rates.get("TRY", 44.36))
                 eur_usd = float(rates.get("EUR", 0.86)) or 1.0
+                gbp_usd = float(rates.get("GBP", 0.79)) or 1.0
+                jpy_usd = float(rates.get("JPY", 149.5)) or 1.0
+                chf_usd = float(rates.get("CHF", 0.88)) or 1.0
+                cny_usd = float(rates.get("CNY", 7.24)) or 1.0
+
                 CURRENCY_RATES_DATA["USD/TL"] = usd_try
                 CURRENCY_RATES_DATA["EUR/TL"] = round(usd_try / eur_usd, 4) if eur_usd else 51.0
+                CURRENCY_RATES_DATA["GBP/TL"] = round(usd_try / gbp_usd, 4) if gbp_usd else 56.0
+                CURRENCY_RATES_DATA["JPY/TL"] = round(usd_try / jpy_usd, 4) if jpy_usd else 0.30
+                CURRENCY_RATES_DATA["CHF/TL"] = round(usd_try / chf_usd, 4) if chf_usd else 50.0
+                CURRENCY_RATES_DATA["CNY/TL"] = round(usd_try / cny_usd, 4) if cny_usd else 6.1
                 CURRENCY_RATES_DATA["TRY"] = 1.0
-                print(f"[rates] Exchange: USD/TL={usd_try}, EUR/TL={CURRENCY_RATES_DATA['EUR/TL']}")
+                print(f"[rates] Exchange: USD/TL={usd_try}, EUR/TL={CURRENCY_RATES_DATA['EUR/TL']}, GBP/TL={CURRENCY_RATES_DATA['GBP/TL']}")
     except Exception as e:
         print(f"[rates] Exchange API error: {e}")
 
-    # 2) BTC and Gold from CoinGecko
+    # 2) BTC, ETH, Gold, Silver from CoinGecko
     try:
-        cg_url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,pax-gold&vs_currencies=try,usd"
+        cg_url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,pax-gold&vs_currencies=try,usd"
         req2 = urllib.request.Request(cg_url, headers={
             'User-Agent': 'Mozilla/5.0',
             'Accept': 'application/json'
         })
         with urllib.request.urlopen(req2, timeout=10) as response:
             raw = response.read().decode()
-            print(f"[rates] CoinGecko raw: {raw[:200]}")
+            print(f"[rates] CoinGecko raw: {raw[:300]}")
             cg_data = json.loads(raw)
 
             btc_try = cg_data.get("bitcoin", {}).get("try")
@@ -70,11 +85,18 @@ def fetch_live_rates():
                 CURRENCY_RATES_DATA["BTC/TL"] = float(btc_try)
                 print(f"[rates] BTC/TL={btc_try}")
 
+            eth_try = cg_data.get("ethereum", {}).get("try")
+            if eth_try is not None:
+                CURRENCY_RATES_DATA["ETH/TL"] = float(eth_try)
+                print(f"[rates] ETH/TL={eth_try}")
+
             xau_usd = cg_data.get("pax-gold", {}).get("usd")
             if xau_usd is not None:
                 gram_try = round((float(xau_usd) / 31.1035) * usd_try, 2)
                 CURRENCY_RATES_DATA["Gram Altın"] = gram_try
-                print(f"[rates] Gram Altın={gram_try} (XAU/oz=${xau_usd})")
+                # Silver approximation: ~1/80th of gold price
+                CURRENCY_RATES_DATA["Gümüş"] = round(gram_try / 80, 2)
+                print(f"[rates] Gram Altın={gram_try} (XAU/oz=${xau_usd}), Gümüş={CURRENCY_RATES_DATA['Gümüş']}")
     except Exception as e:
         print(f"[rates] CoinGecko error: {e}")
 
