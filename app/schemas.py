@@ -111,3 +111,21 @@ class SavingResponse(SavingBase):
 
     class Config:
         from_attributes = True
+
+class SavedExpenseBase(BaseModel):
+    label: str
+    amount: float
+    category: str = "Genel"
+
+class SavedExpenseCreate(SavedExpenseBase):
+    pass
+
+class SavedExpenseResponse(SavedExpenseBase):
+    id: int
+    user_id: int
+
+    class Config:
+        from_attributes = True
+
+class SavedExpenseApply(BaseModel):
+    override_amount: Optional[float] = None

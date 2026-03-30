@@ -480,17 +480,32 @@ def add_saving(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id)
 ):
-    db_saving = models.Saving(
-        user_id=user_id,
-        amount=saving.amount,
-        currency=saving.currency,
-        description=saving.description,
-        date=saving.date
-    )
-    db.add(db_saving)
-    db.commit()
-    db.refresh(db_saving)
-    return db_saving
+    # Upsert: if a saving with the same currency already exists, increment the balance
+    existing = db.query(models.Saving).filter(
+        models.Saving.user_id == user_id,
+        models.Saving.currency == saving.currency
+    ).first()
+
+    if existing:
+        existing.amount += saving.amount
+        existing.date = saving.date
+        if saving.description:
+            existing.description = saving.description
+        db.commit()
+        db.refresh(existing)
+        return existing
+    else:
+        db_saving = models.Saving(
+            user_id=user_id,
+            amount=saving.amount,
+            currency=saving.currency,
+            description=saving.description,
+            date=saving.date
+        )
+        db.add(db_saving)
+        db.commit()
+        db.refresh(db_saving)
+        return db_saving
 
 @router.delete("/savings/{saving_id}")
 def delete_saving(
@@ -524,3 +539,86 @@ def update_user_profile(
     db.commit()
     db.refresh(user)
     return {"name": user.name or "", "job_type": user.job_type, "monthly_salary": user.monthly_salary}
+
+
+# Saved Expense Template Endpoints
+@router.get("/saved-expenses", response_model=List[schemas.SavedExpenseResponse])
+def get_saved_expenses(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    return db.query(models.SavedExpense).filter(models.SavedExpense.user_id == user_id).all()
+
+@router.post("/saved-expenses", response_model=schemas.SavedExpenseResponse)
+def create_saved_expense(
+    expense: schemas.SavedExpenseCreate,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    db_expense = models.SavedExpense(
+        user_id=user_id,
+        label=expense.label.strip(),
+        amount=expense.amount,
+        category=expense.category
+    )
+    db.add(db_expense)
+    db.commit()
+    db.refresh(db_expense)
+    return db_expense
+
+@router.delete("/saved-expenses/{expense_id}")
+def delete_saved_expense(
+    expense_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    expense = db.query(models.SavedExpense).filter(
+        models.SavedExpense.id == expense_id,
+        models.SavedExpense.user_id == user_id
+    ).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Saved expense not found")
+    db.delete(expense)
+    db.commit()
+    return {"message": "Saved expense deleted successfully"}
+
+@router.post("/saved-expenses/{expense_id}/apply")
+def apply_saved_expense(
+    expense_id: int,
+    apply_data: schemas.SavedExpenseApply = schemas.SavedExpenseApply(),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    expense = db.query(models.SavedExpense).filter(
+        models.SavedExpense.id == expense_id,
+        models.SavedExpense.user_id == user_id
+    ).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Saved expense not found")
+
+    # Use override amount if provided, otherwise use template amount
+    final_amount = apply_data.override_amount if apply_data.override_amount is not None else expense.amount
+
+    # Create the gider transaction
+    db_transaction = models.Transaction(
+        user_id=user_id,
+        amount=final_amount,
+        description=expense.label,
+        type="gider",
+        date=datetime.now().strftime("%Y-%m-%d"),
+        category=expense.category,
+        is_recurring=False,
+        currency="TRY"
+    )
+    db.add(db_transaction)
+
+    # Update financial summary
+    summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
+    if not summary:
+        summary = models.FinancialSummary(user_id=user_id)
+        db.add(summary)
+    summary.monthly_expense += final_amount
+    summary.monthly_savings = summary.monthly_income - summary.monthly_expense
+
+    db.commit()
+    return {"message": f"Expense '{expense.label}' applied", "amount": final_amount, "id": db_transaction.id}

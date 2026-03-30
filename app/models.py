@@ -65,3 +65,12 @@ class Saving(Base):
     description = Column(String, nullable=True)
     date = Column(String, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+class SavedExpense(Base):
+    __tablename__ = "saved_expenses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    label = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    category = Column(String, nullable=False, default="Genel")
