@@ -524,32 +524,19 @@ def add_saving(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id)
 ):
-    # Upsert: if a saving with the same currency already exists, increment the balance
-    existing = db.query(models.Saving).filter(
-        models.Saving.user_id == user_id,
-        models.Saving.currency == saving.currency
-    ).first()
-
-    if existing:
-        existing.amount += saving.amount
-        existing.date = saving.date
-        if saving.description:
-            existing.description = saving.description
-        db.commit()
-        db.refresh(existing)
-        return existing
-    else:
-        db_saving = models.Saving(
-            user_id=user_id,
-            amount=saving.amount,
-            currency=saving.currency,
-            description=saving.description,
-            date=saving.date
-        )
-        db.add(db_saving)
-        db.commit()
-        db.refresh(db_saving)
-        return db_saving
+    # Always insert a new row — each deposit is its own record.
+    # The frontend groups by currency and sums, so history is fully preserved.
+    db_saving = models.Saving(
+        user_id=user_id,
+        amount=saving.amount,
+        currency=saving.currency,
+        description=saving.description,
+        date=saving.date
+    )
+    db.add(db_saving)
+    db.commit()
+    db.refresh(db_saving)
+    return db_saving
 
 @router.delete("/savings/{saving_id}")
 def delete_saving(
