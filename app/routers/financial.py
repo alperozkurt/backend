@@ -419,6 +419,7 @@ def purchase_goal(
         category="Hedef",
         date=datetime.now().strftime("%Y-%m-%d"),
         currency="TRY",
+        is_need=goal.is_need,
     )
     db.add(expense_txn)
 
