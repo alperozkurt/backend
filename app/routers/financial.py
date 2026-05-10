@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from datetime import datetime
+from pydantic import BaseModel
 from ..database import SessionLocal
 from .. import models, schemas
 from typing import List, Optional
@@ -193,7 +194,8 @@ def get_transactions(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
     year: Optional[int] = None,
-    month: Optional[int] = None
+    month: Optional[int] = None,
+    goal_id: Optional[int] = None
 ):
     query_income = db.query(models.Transaction).filter(
         models.Transaction.user_id == user_id,
@@ -208,7 +210,12 @@ def get_transactions(
         date_prefix = f"{year}-{month:02d}"
         query_income = query_income.filter(models.Transaction.date.startswith(date_prefix))
         query_expenses = query_expenses.filter(models.Transaction.date.startswith(date_prefix))
-        
+
+    # Optional filter: only transactions linked to a specific goal
+    if goal_id is not None:
+        query_income = query_income.filter(models.Transaction.goal_id == goal_id)
+        query_expenses = query_expenses.filter(models.Transaction.goal_id == goal_id)
+
     income = query_income.all()
     expenses = query_expenses.all()
 
@@ -216,6 +223,7 @@ def get_transactions(
     activities = []
     for transaction in income + expenses:
         activities.append({
+            "id": transaction.id,
             "date": transaction.date,
             "type": transaction.type,
             "amount": transaction.amount,
@@ -230,8 +238,8 @@ def get_transactions(
     activities.sort(key=lambda x: x["date"], reverse=True)
 
     return {
-        "income": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id, "category": t.category, "is_recurring": t.is_recurring, "currency": t.currency} for t in income],
-        "expenses": [{"amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id, "category": t.category, "is_recurring": t.is_recurring, "currency": t.currency} for t in expenses],
+        "income": [{"id": t.id, "amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id, "category": t.category, "is_recurring": t.is_recurring, "currency": t.currency} for t in income],
+        "expenses": [{"id": t.id, "amount": t.amount, "description": t.description, "date": t.date, "goal_id": t.goal_id, "category": t.category, "is_recurring": t.is_recurring, "currency": t.currency} for t in expenses],
         "activities": activities
     }
 
@@ -386,27 +394,28 @@ def purchase_goal(
     goal = db.query(models.Goal).filter(models.Goal.id == goal_id, models.Goal.user_id == user_id).first()
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")
-        
+
     if goal.is_completed:
         raise HTTPException(status_code=400, detail="Goal is already completed")
 
     # 1. Mark goal as completed
     goal.is_completed = True
     goal.completed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # 2. Add an explicit expense transaction for purchasing the target
+
+    # 2. Add an explicit expense transaction for purchasing the target.
+    #    goal_id is intentionally omitted so the goal's saved_amount chart does not zero-out.
     expense_txn = models.Transaction(
         user_id=user_id,
         amount=goal.target_amount,
         description=f"Satın Alma: {goal.title}",
         type="gider",
         category="Hedef",
-        date=datetime.now().strftime("%Y-%m-%d")
-        # goal_id is intentionally omitted so the goal's saved_amount and chart do not zero-out
+        date=datetime.now().strftime("%Y-%m-%d"),
+        currency="TRY",
     )
     db.add(expense_txn)
-    
-    # 3. Check if there's excess income over the goal target → save as TRY
+
+    # 3. Check if there's excess income over the goal target → save the surplus as TRY
     total_goal_income = db.query(models.Transaction).filter(
         models.Transaction.user_id == user_id,
         models.Transaction.goal_id == goal.id,
@@ -415,29 +424,24 @@ def purchase_goal(
     total_saved = sum(convert_to_try(t.amount, t.currency) for t in total_goal_income)
     excess = total_saved - goal.target_amount
     if excess > 0:
-        saving = models.Saving(
+        surplus_saving = models.Saving(
             user_id=user_id,
             amount=round(excess, 2),
             currency="TRY",
             description=f"Fazla Birikim: {goal.title}",
             date=datetime.now().strftime("%Y-%m-%d")
         )
-        db.add(saving)
-    
-    # 4. Apply deduction to financial summary
-    summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
-    if not summary:
-        summary = models.FinancialSummary(user_id=user_id)
-        db.add(summary)
-        
-    summary.monthly_expense += goal.target_amount
-    summary.monthly_savings = summary.monthly_income - summary.monthly_expense
-    
+        db.add(surplus_saving)
+
+    # 4. DO NOT mutate the summary row directly — GET /financial/summary recalculates
+    #    from transactions on every request, so it stays accurate automatically.
+    #    We only commit the new expense_txn which the GET endpoint will pick up.
+
     db.commit()
     return {"message": "Goal securely purchased", "goal": {"id": goal.id, "is_completed": goal.is_completed}}
 
 
-class GoalFundRequest(schemas.BaseModel):
+class GoalFundRequest(BaseModel):
     saving_id: int
 
 @router.post("/goals/{goal_id}/fund")
@@ -457,7 +461,7 @@ def fund_goal_from_saving(
     if not saving:
         raise HTTPException(status_code=404, detail="Saving not found")
 
-    # Convert saving to TRY
+    # Convert saving to TRY using live rates
     amount_try = convert_to_try(saving.amount, saving.currency)
 
     # Create income transaction tagged to goal
@@ -473,11 +477,19 @@ def fund_goal_from_saving(
     )
     db.add(txn)
 
-    # Delete the saving
+    # Update the financial summary so monthly_income stays current
+    summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
+    if not summary:
+        summary = models.FinancialSummary(user_id=user_id)
+        db.add(summary)
+    summary.monthly_income += amount_try
+    summary.monthly_savings = summary.monthly_income - summary.monthly_expense
+
+    # Delete the consumed saving record
     db.delete(saving)
     db.commit()
 
-    return {"message": f"Saving applied to goal '{goal.title}'", "amount_try": amount_try}
+    return {"message": f"Saving applied to goal '{goal.title}'", "amount_try": round(amount_try, 2)}
 
 @router.delete("/goals/{goal_id}")
 def delete_goal(
@@ -547,10 +559,114 @@ def delete_saving(
     saving = db.query(models.Saving).filter(models.Saving.id == saving_id, models.Saving.user_id == user_id).first()
     if not saving:
         raise HTTPException(status_code=404, detail="Saving not found")
-    
+
     db.delete(saving)
     db.commit()
     return {"message": "Saving deleted successfully"}
+
+
+@router.get("/savings/summary")
+def get_savings_summary(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """Return per-currency totals and overall TRY equivalent for the user's savings."""
+    savings = db.query(models.Saving).filter(models.Saving.user_id == user_id).all()
+    rates = get_exchange_rates()
+
+    # Aggregate per currency
+    currency_totals: dict = {}
+    for s in savings:
+        curr = s.currency
+        currency_totals[curr] = currency_totals.get(curr, 0.0) + s.amount
+
+    # Build response with TRY equivalent for each currency
+    breakdown = []
+    grand_total_try = 0.0
+    for curr, total in currency_totals.items():
+        total_try = convert_to_try(total, curr)
+        grand_total_try += total_try
+        breakdown.append({
+            "currency": curr,
+            "total": round(total, 4),
+            "total_try": round(total_try, 2),
+        })
+
+    return {
+        "grand_total_try": round(grand_total_try, 2),
+        "breakdown": breakdown,
+        "rates": {
+            "USD/TL": rates.get("USD/TL"),
+            "EUR/TL": rates.get("EUR/TL"),
+            "Gram Altın": rates.get("Gram Altın"),
+            "BTC/TL": rates.get("BTC/TL"),
+        },
+    }
+
+
+class SavingTransferRequest(BaseModel):
+    from_saving_id: int
+    to_currency: str  # target currency: 'TRY', 'USD', 'EUR', 'GOLD'
+    description: Optional[str] = None
+
+
+@router.post("/savings/transfer")
+def transfer_saving(
+    req: SavingTransferRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id)
+):
+    """Convert an existing saving to a different currency using live exchange rates."""
+    valid_currencies = ["TRY", "USD", "EUR", "GOLD"]
+    if req.to_currency not in valid_currencies:
+        raise HTTPException(status_code=400, detail=f"Invalid target currency. Must be one of {valid_currencies}")
+
+    source = db.query(models.Saving).filter(
+        models.Saving.id == req.from_saving_id,
+        models.Saving.user_id == user_id
+    ).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Source saving not found")
+
+    if source.currency == req.to_currency:
+        raise HTTPException(status_code=400, detail="Source and target currency are the same")
+
+    # Step 1: convert source amount to TRY
+    amount_in_try = convert_to_try(source.amount, source.currency)
+
+    # Step 2: convert TRY → target currency
+    rates = get_exchange_rates()
+    reverse_mapping = {
+        "TRY": 1.0,
+        "USD": rates.get("USD/TL", 1.0),
+        "EUR": rates.get("EUR/TL", 1.0),
+        "GOLD": rates.get("Gram Alt\u0131n", 1.0),
+    }
+    target_rate = reverse_mapping.get(req.to_currency, 1.0)
+    converted_amount = amount_in_try / target_rate if target_rate else amount_in_try
+
+    desc = req.description or f"{source.currency} → {req.to_currency} dönüşümü"
+
+    # Step 3: delete source, create new saving in target currency
+    db.delete(source)
+    new_saving = models.Saving(
+        user_id=user_id,
+        amount=round(converted_amount, 4),
+        currency=req.to_currency,
+        description=desc,
+        date=datetime.now().strftime("%Y-%m-%d")
+    )
+    db.add(new_saving)
+    db.commit()
+    db.refresh(new_saving)
+
+    return {
+        "message": f"Transferred {source.amount} {source.currency} → {round(converted_amount, 4)} {req.to_currency}",
+        "from": {"currency": source.currency, "amount": source.amount},
+        "to": {"currency": req.to_currency, "amount": round(converted_amount, 4)},
+        "rate_used": {"try_value": round(amount_in_try, 2), "target_rate": target_rate},
+        "new_saving_id": new_saving.id,
+    }
 
 
 @router.put("/user/profile", response_model=schemas.UserProfileResponse)
