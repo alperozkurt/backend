@@ -33,6 +33,7 @@ class TransactionBase(BaseModel):
     category: str = "Genel"
     is_recurring: bool = False
     currency: str = "TRY"
+    is_need: bool = True
 
 class TransactionCreate(TransactionBase):
     pass

@@ -231,7 +231,8 @@ def get_transactions(
             "category": transaction.category,
             "is_recurring": transaction.is_recurring,
             "goal_id": transaction.goal_id,
-            "currency": transaction.currency
+            "currency": transaction.currency,
+            "is_need": transaction.is_need
         })
 
     # Sort activities by date descending (simple string sort works for YYYY-MM-DD)
@@ -261,7 +262,8 @@ def add_transaction(
         category=transaction.category,
         is_recurring=transaction.is_recurring,
         goal_id=transaction.goal_id,
-        currency=transaction.currency
+        currency=transaction.currency,
+        is_need=transaction.is_need
     )
     db.add(db_transaction)
 

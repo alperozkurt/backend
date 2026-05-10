@@ -25,6 +25,7 @@ class Transaction(Base):
     category = Column(String, nullable=False, default="Genel")
     is_recurring = Column(Boolean, default=False)
     currency = Column(String, nullable=False, default="TRY") # 'TRY', 'USD', 'EUR', 'GOLD'
+    is_need = Column(Boolean, nullable=False, default=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 class FinancialSummary(Base):
