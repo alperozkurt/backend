@@ -12,18 +12,5 @@ FastAPI backend for the GençCüzdan financial management application.
 
 ## API Documentation
 
-Once the server is running, visit `http://100.68.176.40:8000/docs` for interactive API documentation.
+Once the server is running, visit `https://api.alperlab.lol/docs` for interactive API documentation.
 
-## Database
-
-Set the `DATABASE_URL` environment variable for production databases.
-
----
-
-NOTES FOR ME
-
-update_repo.sh -> runs every 10 minutes on a timer and pulls this repo
-
-restart-fastapi.sh -> runs pip install -r requirements then restarts fastapi-app.service
-
-fastapi-app.service -> runs /srv/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
