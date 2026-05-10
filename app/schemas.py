@@ -85,6 +85,7 @@ class GoalBase(BaseModel):
     category: str = "Genel"
     color: str
     icon: str = "stars_rounded"
+    is_need: bool = True
     is_completed: bool = False
     completed_at: Optional[str] = None
 

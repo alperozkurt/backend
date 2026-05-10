@@ -2,3 +2,4 @@
 -- Adds the is_need boolean column to the transactions table for tracking Needs vs Wants.
 
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_need BOOLEAN DEFAULT TRUE;
+ALTER TABLE goals ADD COLUMN IF NOT EXISTS is_need BOOLEAN DEFAULT TRUE;

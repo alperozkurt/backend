@@ -358,6 +358,7 @@ def create_goal(
         category=goal_create.category,
         color=goal_create.color,
         icon=goal_create.icon,
+        is_need=goal_create.is_need,
         is_completed=goal_create.is_completed,
         completed_at=goal_create.completed_at
     )
@@ -383,6 +384,7 @@ def update_goal(
     goal.category = goal_update.category
     goal.color = goal_update.color
     goal.icon = goal_update.icon
+    goal.is_need = goal_update.is_need
     goal.is_completed = goal_update.is_completed
     goal.completed_at = goal_update.completed_at
 

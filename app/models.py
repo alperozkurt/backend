@@ -55,6 +55,7 @@ class Goal(Base):
     color = Column(String, nullable=False)  # e.g., 'purple', 'blue'
     category = Column(String, nullable=False, default="Genel")
     icon = Column(String, nullable=False, default="stars_rounded")
+    is_need = Column(Boolean, nullable=False, default=True)
     is_completed = Column(Boolean, default=False)
     completed_at = Column(String, nullable=True)
 
