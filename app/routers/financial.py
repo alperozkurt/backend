@@ -268,8 +268,11 @@ def add_transaction(
     # Update financial summary (only for TRY for now, or total balance? The summary seems to be in TRY)
     summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
     if not summary:
-        summary = models.FinancialSummary(user_id=user_id)
+        summary = models.FinancialSummary(user_id=user_id, monthly_income=0.0, monthly_expense=0.0, monthly_savings=0.0)
         db.add(summary)
+
+    summary.monthly_income = summary.monthly_income or 0.0
+    summary.monthly_expense = summary.monthly_expense or 0.0
 
     # Note: Summary logic now accounts for currency conversion to TRY
     amount_in_try = convert_to_try(transaction.amount, transaction.currency)
@@ -480,8 +483,11 @@ def fund_goal_from_saving(
     # Update the financial summary so monthly_income stays current
     summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
     if not summary:
-        summary = models.FinancialSummary(user_id=user_id)
+        summary = models.FinancialSummary(user_id=user_id, monthly_income=0.0, monthly_expense=0.0, monthly_savings=0.0)
         db.add(summary)
+        
+    summary.monthly_income = summary.monthly_income or 0.0
+    summary.monthly_expense = summary.monthly_expense or 0.0
     summary.monthly_income += amount_try
     summary.monthly_savings = summary.monthly_income - summary.monthly_expense
 
@@ -550,21 +556,6 @@ def add_saving(
     db.refresh(db_saving)
     return db_saving
 
-@router.delete("/savings/{saving_id}")
-def delete_saving(
-    saving_id: int,
-    db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id)
-):
-    saving = db.query(models.Saving).filter(models.Saving.id == saving_id, models.Saving.user_id == user_id).first()
-    if not saving:
-        raise HTTPException(status_code=404, detail="Saving not found")
-
-    db.delete(saving)
-    db.commit()
-    return {"message": "Saving deleted successfully"}
-
-
 @router.get("/savings/summary")
 def get_savings_summary(
     db: Session = Depends(get_db),
@@ -619,70 +610,71 @@ def transfer_saving(
     """Convert an existing saving to a different currency using live exchange rates."""
     valid_currencies = ["TRY", "USD", "EUR", "GOLD"]
     if req.to_currency not in valid_currencies:
-        raise HTTPException(status_code=400, detail=f"Invalid target currency. Must be one of {valid_currencies}")
+        raise HTTPException(status_code=400, detail="Invalid target currency")
 
-    source = db.query(models.Saving).filter(
-        models.Saving.id == req.from_saving_id,
-        models.Saving.user_id == user_id
-    ).first()
-    if not source:
+    saving = db.query(models.Saving).filter(models.Saving.id == req.from_saving_id, models.Saving.user_id == user_id).first()
+    if not saving:
         raise HTTPException(status_code=404, detail="Source saving not found")
 
-    if source.currency == req.to_currency:
-        raise HTTPException(status_code=400, detail="Source and target currency are the same")
+    if saving.currency == req.to_currency:
+        raise HTTPException(status_code=400, detail="Target currency must be different from source currency")
 
-    # Step 1: convert source amount to TRY
-    amount_in_try = convert_to_try(source.amount, source.currency)
+    # Calculate TRY equivalent of the source amount
+    try_value = convert_to_try(saving.amount, saving.currency)
 
-    # Step 2: convert TRY → target currency
-    rates = get_exchange_rates()
-    reverse_mapping = {
-        "TRY": 1.0,
-        "USD": rates.get("USD/TL", 1.0),
-        "EUR": rates.get("EUR/TL", 1.0),
-        "GOLD": rates.get("Gram Alt\u0131n", 1.0),
-    }
-    target_rate = reverse_mapping.get(req.to_currency, 1.0)
-    converted_amount = amount_in_try / target_rate if target_rate else amount_in_try
+    # Calculate amount in target currency from the TRY value
+    if req.to_currency == "TRY":
+        target_amount = try_value
+    else:
+        rates = get_exchange_rates()
+        if req.to_currency == "USD":
+            rate = rates.get("USD/TL", 1.0)
+        elif req.to_currency == "EUR":
+            rate = rates.get("EUR/TL", 1.0)
+        elif req.to_currency == "GOLD":
+            rate = rates.get("Gram Altın", 1.0)
+        else:
+            rate = 1.0
 
-    desc = req.description or f"{source.currency} → {req.to_currency} dönüşümü"
+        if rate <= 0:
+            raise HTTPException(status_code=500, detail="Invalid exchange rate from backend")
 
-    # Step 3: delete source, create new saving in target currency
-    db.delete(source)
+        target_amount = try_value / rate
+
+    # Create new saving in target currency
+    new_desc = req.description or f"{saving.currency} -> {req.to_currency} Çeviri"
     new_saving = models.Saving(
         user_id=user_id,
-        amount=round(converted_amount, 4),
+        amount=target_amount,
         currency=req.to_currency,
-        description=desc,
-        date=datetime.now().strftime("%Y-%m-%d")
+        description=new_desc,
+        date=datetime.utcnow().strftime("%Y-%m-%d")
     )
     db.add(new_saving)
+    
+    # Delete old saving
+    db.delete(saving)
     db.commit()
     db.refresh(new_saving)
 
-    return {
-        "message": f"Transferred {source.amount} {source.currency} → {round(converted_amount, 4)} {req.to_currency}",
-        "from": {"currency": source.currency, "amount": source.amount},
-        "to": {"currency": req.to_currency, "amount": round(converted_amount, 4)},
-        "rate_used": {"try_value": round(amount_in_try, 2), "target_rate": target_rate},
-        "new_saving_id": new_saving.id,
-    }
+    return new_saving
 
 
-@router.put("/user/profile", response_model=schemas.UserProfileResponse)
-def update_user_profile(
-    profile: schemas.UserProfileUpdate,
+@router.delete("/savings/{saving_id}")
+def delete_saving(
+    saving_id: int,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id)
 ):
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    update_data = profile.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(user, field, value)
-        
+    saving = db.query(models.Saving).filter(models.Saving.id == saving_id, models.Saving.user_id == user_id).first()
+    if not saving:
+        raise HTTPException(status_code=404, detail="Saving not found")
+
+    db.delete(saving)
+    db.commit()
+    return {"message": "Saving deleted successfully"}
+
+
     db.commit()
     db.refresh(user)
     return {"name": user.name or "", "job_type": user.job_type, "monthly_salary": user.monthly_salary}
@@ -762,8 +754,11 @@ def apply_saved_expense(
     # Update financial summary
     summary = db.query(models.FinancialSummary).filter(models.FinancialSummary.user_id == user_id).first()
     if not summary:
-        summary = models.FinancialSummary(user_id=user_id)
+        summary = models.FinancialSummary(user_id=user_id, monthly_income=0.0, monthly_expense=0.0, monthly_savings=0.0)
         db.add(summary)
+        
+    summary.monthly_income = summary.monthly_income or 0.0
+    summary.monthly_expense = summary.monthly_expense or 0.0
     summary.monthly_expense += final_amount
     summary.monthly_savings = summary.monthly_income - summary.monthly_expense
 
