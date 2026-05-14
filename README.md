@@ -12,5 +12,5 @@ FastAPI backend for the GençCüzdan financial management application.
 
 ## API Documentation
 
-Once the server is running, visit `https://api.alperlab.lol/docs` for interactive API documentation.
+Once the server is running, visit https://api.alperlab.lol/docs for interactive API documentation.
 
